@@ -1,10 +1,28 @@
 import os
 import shutil
 
+from marker import make_mark_text, modify_dxf_text
+
+
 def process_folder(folder):
 
     reverse_folder = os.path.join(folder, "Reverse")
     os.makedirs(reverse_folder, exist_ok=True)
+
+    # Запоминаем детали, у которых есть оборотная сторона
+    back_parts = set()
+
+    for filename in os.listdir(folder):
+
+        if not filename.upper().endswith(".DXF"):
+            continue
+
+        name = os.path.splitext(filename)[0]
+        parts = name.split("_")
+
+        if "O" in parts:
+            key = f"{parts[0]}_{parts[1]}"
+            back_parts.add(key)
 
     front = 0
     reverse = 0
@@ -23,14 +41,10 @@ def process_folder(folder):
 
         try:
 
-            name, ext = os.path.splitext(filename)
+            name = os.path.splitext(filename)[0]
             parts = name.split("_")
 
-            # ------------------------
-            # ОБОРОТНАЯ СТОРОНА
-            # Если есть O
-            # ------------------------
-
+            # ---------- ОБОРОТ ----------
             if "O" in parts:
 
                 shutil.move(
@@ -41,11 +55,17 @@ def process_folder(folder):
                 reverse += 1
                 continue
 
-            # ------------------------
-            # ЛИЦЕВАЯ СТОРОНА
-            # ------------------------
+            # ---------- ЛИЦО ----------
 
             qty = int(parts[-1])
+
+            key = f"{parts[0]}_{parts[1]}"
+
+            has_back = key in back_parts
+
+            text = make_mark_text(filename, has_back)
+
+            modify_dxf_text(fullpath, text)
 
             prefix = "_".join(parts[:-1])
 
@@ -53,7 +73,7 @@ def process_folder(folder):
 
             for i in range(1, qty + 1):
 
-                newname = f"{prefix}_{i}{ext}"
+                newname = f"{prefix}_{i}.DXF"
 
                 shutil.copy2(
                     fullpath,
