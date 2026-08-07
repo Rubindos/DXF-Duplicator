@@ -11,9 +11,7 @@ def process_folder(folder):
     copies = 0
     errors = 0
 
-    files = list(os.listdir(folder))
-
-    for filename in files:
+    for filename in os.listdir(folder):
 
         if not filename.upper().endswith(".DXF"):
             continue
@@ -23,51 +21,17 @@ def process_folder(folder):
         if not os.path.isfile(fullpath):
             continue
 
-        name, ext = os.path.splitext(filename)
-        parts = name.split("_")
-
         try:
 
-            # ---------------------------
-            # Форматы:
-            # 23_2.DXF
-            # I_23_2.DXF
-            # ---------------------------
+            name, ext = os.path.splitext(filename)
+            parts = name.split("_")
 
-            if len(parts) == 2 or (len(parts) == 3 and not parts[0].isdigit()):
+            # ------------------------
+            # ОБОРОТНАЯ СТОРОНА
+            # Если есть O
+            # ------------------------
 
-                if len(parts) == 2:
-                    prefix = ""
-                    number = parts[0]
-                    qty = int(parts[1])
-
-                else:
-                    prefix = parts[0] + "_"
-                    number = parts[1]
-                    qty = int(parts[2])
-
-                front += 1
-
-                for i in range(1, qty + 1):
-
-                    newname = f"{prefix}{number}_{i}{ext}"
-
-                    shutil.copy2(
-                        fullpath,
-                        os.path.join(folder, newname)
-                    )
-
-                    copies += 1
-
-                os.remove(fullpath)
-
-            # ---------------------------
-            # Форматы:
-            # 23_1_2.DXF
-            # I_23_1_2.DXF
-            # ---------------------------
-
-            elif len(parts) == 3 or len(parts) == 4:
+            if "O" in parts:
 
                 shutil.move(
                     fullpath,
@@ -75,8 +39,33 @@ def process_folder(folder):
                 )
 
                 reverse += 1
+                continue
 
-        except Exception:
+            # ------------------------
+            # ЛИЦЕВАЯ СТОРОНА
+            # ------------------------
+
+            qty = int(parts[-1])
+
+            prefix = "_".join(parts[:-1])
+
+            front += 1
+
+            for i in range(1, qty + 1):
+
+                newname = f"{prefix}_{i}{ext}"
+
+                shutil.copy2(
+                    fullpath,
+                    os.path.join(folder, newname)
+                )
+
+                copies += 1
+
+            os.remove(fullpath)
+
+        except Exception as e:
+            print(e)
             errors += 1
 
     return {
