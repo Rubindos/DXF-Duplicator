@@ -1,18 +1,9 @@
 import os
-import re
 
 
 def make_mark_text(filename, has_back):
-    """
-    I_6_2.DXF      -> I
-    I_6_2.DXF + back -> I6
-
-    II_23_5.DXF -> II
-    II_23_5.DXF + back -> II23
-    """
 
     name = os.path.splitext(filename)[0]
-
     parts = name.split("_")
 
     prefix = parts[0]
@@ -29,33 +20,82 @@ def modify_dxf_text(filepath, new_text):
     with open(filepath, "r", encoding="cp1251", errors="ignore") as f:
         lines = f.readlines()
 
+    # ---------- определяем размеры детали ----------
+    width = 0
+    height = 0
+
+    for i in range(len(lines) - 1):
+
+        if lines[i].strip() == "$EXTMAX":
+
+            j = i
+
+            while j < min(i + 20, len(lines)):
+
+                if lines[j].strip() == "10":
+                    width = float(lines[j + 1])
+
+                if lines[j].strip() == "20":
+                    height = float(lines[j + 1])
+                    break
+
+                j += 1
+
+            break
+
+    angle = "0"
+
+    if height > width:
+        angle = "90"
+
+    # ---------- изменяем MTEXT ----------
+
     new_lines = []
 
-    inside_mtext = False
+    inside = False
+
+    inserted_angle = False
 
     i = 0
 
     while i < len(lines):
 
-        line = lines[i].rstrip("\n")
+        s = lines[i].strip()
 
         new_lines.append(lines[i])
 
-        if line.strip() == "MTEXT":
-            inside_mtext = True
+        if s == "MTEXT":
+            inside = True
+            inserted_angle = False
 
-        elif inside_mtext and line.strip() == "40":
-            if i + 1 < len(lines):
-                new_lines.append("25\n")
+        elif inside and s == "40":
+
+            new_lines.append("25\n")
+            i += 2
+            continue
+
+        elif inside and s == "41":
+
+            if not inserted_angle:
+
+                new_lines.append(lines[i])
+
+                new_lines.append(lines[i + 1])
+
+                new_lines.append("50\n")
+                new_lines.append(angle + "\n")
+
+                inserted_angle = True
+
                 i += 2
                 continue
 
-        elif inside_mtext and line.strip() == "1":
-            if i + 1 < len(lines):
-                new_lines.append(new_text + "\n")
-                inside_mtext = False
-                i += 2
-                continue
+        elif inside and s == "1":
+
+            new_lines.append(new_text + "\n")
+            inside = False
+            i += 2
+            continue
 
         i += 1
 
