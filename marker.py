@@ -1,16 +1,13 @@
 import os
 
 
-TEXT_HEIGHT = 25.0
+TEXT_HEIGHT = "25"
 
 
 def make_mark_text(filename, has_back):
     """
-    Формирует текст маркировки.
-
-    Пример:
-    I_6_2.DXF + оборотная сторона -> I6
-    I_6_2.DXF без оборотной       -> I
+    I_6_2.DXF + I_6_O_2.DXF -> I6
+    I_6_2.DXF без оборота    -> I
     """
 
     name = os.path.splitext(filename)[0]
@@ -28,10 +25,19 @@ def make_mark_text(filename, has_back):
     return prefix
 
 
-def find_extents(lines):
-    """
-    Получает габариты детали из $EXTMIN / $EXTMAX.
-    """
+def modify_dxf_text(filepath, new_text):
+
+    with open(
+        filepath,
+        "r",
+        encoding="cp1251",
+        errors="ignore"
+    ) as f:
+        lines = f.readlines()
+
+    # --------------------------------------------------
+    # Определяем габариты детали
+    # --------------------------------------------------
 
     min_x = None
     min_y = None
@@ -40,9 +46,7 @@ def find_extents(lines):
 
     for i in range(len(lines) - 1):
 
-        code = lines[i].strip()
-
-        if code == "$EXTMIN":
+        if lines[i].strip() == "$EXTMIN":
 
             j = i + 1
 
@@ -54,18 +58,18 @@ def find_extents(lines):
                     except:
                         pass
 
-                if lines[j].strip() == "20":
+                elif lines[j].strip() == "20":
                     try:
                         min_y = float(lines[j + 1].strip())
                     except:
                         pass
 
+                j += 1
+
                 if min_x is not None and min_y is not None:
                     break
 
-                j += 1
-
-        elif code == "$EXTMAX":
+        elif lines[i].strip() == "$EXTMAX":
 
             j = i + 1
 
@@ -77,290 +81,148 @@ def find_extents(lines):
                     except:
                         pass
 
-                if lines[j].strip() == "20":
+                elif lines[j].strip() == "20":
                     try:
                         max_y = float(lines[j + 1].strip())
                     except:
                         pass
 
+                j += 1
+
                 if max_x is not None and max_y is not None:
                     break
 
-                j += 1
+    # --------------------------------------------------
+    # Если габариты найдены — определяем ориентацию
+    # --------------------------------------------------
+
+    angle = "0"
 
     if (
-        min_x is None
-        or min_y is None
-        or max_x is None
-        or max_y is None
+        min_x is not None
+        and min_y is not None
+        and max_x is not None
+        and max_y is not None
     ):
-        return None
 
-    return min_x, min_y, max_x, max_y
+        width = max_x - min_x
+        height = max_y - min_y
 
+        if height > width:
+            angle = "90"
 
-def find_mtext(lines):
-    """
-    Находит первый MTEXT и получает:
-    - layer
-    - координату X
-    - координату Y
-    - текст
-    """
+    # --------------------------------------------------
+    # Изменяем ТОЛЬКО существующий MTEXT
+    # --------------------------------------------------
 
-    for i in range(len(lines)):
+    new_lines = []
 
-        if lines[i].strip() != "MTEXT":
+    inside_mtext = False
+    text_replaced = False
+    height_replaced = False
+    angle_replaced = False
+
+    i = 0
+
+    while i < len(lines):
+
+        current = lines[i].strip()
+
+        # Начало MTEXT
+        if current == "MTEXT":
+
+            inside_mtext = True
+            text_replaced = False
+            height_replaced = False
+            angle_replaced = False
+
+            new_lines.append(lines[i])
+            i += 1
             continue
 
-        layer = "0"
-        x = None
-        y = None
-        old_text = ""
+        # Конец сущности
+        if inside_mtext and current == "0":
 
-        j = i + 1
+            inside_mtext = False
 
-        while j < len(lines):
+            new_lines.append(lines[i])
+            i += 1
+            continue
 
-            code = lines[j].strip()
+        # --------------------------------------------------
+        # Высота текста
+        # --------------------------------------------------
 
-            if code == "0":
-                break
+        if inside_mtext and current == "40":
 
-            if code == "8" and j + 1 < len(lines):
-                layer = lines[j + 1].strip()
+            new_lines.append(lines[i])
 
-            elif code == "10" and j + 1 < len(lines):
-                try:
-                    x = float(lines[j + 1].strip())
-                except:
-                    pass
+            if i + 1 < len(lines):
 
-            elif code == "20" and j + 1 < len(lines):
-                try:
-                    y = float(lines[j + 1].strip())
-                except:
-                    pass
+                new_lines.append(
+                    TEXT_HEIGHT + "\n"
+                )
 
-            elif code == "1" and j + 1 < len(lines):
-                old_text = lines[j + 1].strip()
+                i += 2
+                height_replaced = True
+                continue
 
-            j += 1
+        # --------------------------------------------------
+        # Поворот
+        # --------------------------------------------------
 
-        return {
-            "start": i,
-            "end": j,
-            "layer": layer,
-            "x": x,
-            "y": y,
-            "text": old_text
-        }
+        if inside_mtext and current == "50":
 
-    return None
+            new_lines.append(lines[i])
 
+            if i + 1 < len(lines):
 
-def make_text_entity(
-    handle,
-    owner,
-    layer,
-    x,
-    y,
-    text,
-    angle
-):
-    """
-    Создаёт обычный DXF TEXT.
+                new_lines.append(
+                    angle + "\n"
+                )
 
-    TEXT используется вместо MTEXT,
-    чтобы CAM получал максимально простой объект.
-    """
+                i += 2
+                angle_replaced = True
+                continue
 
-    return [
-        "  0\n",
-        "TEXT\n",
+        # --------------------------------------------------
+        # Текст MTEXT
+        # --------------------------------------------------
 
-        "  5\n",
-        f"{handle}\n",
+        if inside_mtext and current == "1":
 
-        "330\n",
-        f"{owner}\n",
+            new_lines.append(lines[i])
 
-        "100\n",
-        "AcDbEntity\n",
+            new_lines.append(
+                new_text + "\n"
+            )
 
-        "  8\n",
-        f"{layer}\n",
+            i += 2
 
-        "100\n",
-        "AcDbText\n",
+            text_replaced = True
+            continue
 
-        " 10\n",
-        f"{x:.6f}\n",
+        # --------------------------------------------------
+        # Остальные данные оставляем БЕЗ ИЗМЕНЕНИЙ
+        # --------------------------------------------------
 
-        " 20\n",
-        f"{y:.6f}\n",
-
-        " 30\n",
-        "0.0\n",
-
-        " 40\n",
-        f"{TEXT_HEIGHT:.6f}\n",
-
-        "  1\n",
-        f"{text}\n",
-
-        " 50\n",
-        f"{angle:.6f}\n",
-
-        "  7\n",
-        "STANDARD\n",
-
-        # Центрирование текста по горизонтали
-        " 72\n",
-        "1\n",
-
-        # Точка выравнивания
-        " 11\n",
-        f"{x:.6f}\n",
-
-        " 21\n",
-        f"{y:.6f}\n",
-
-        " 31\n",
-        "0.0\n",
-
-        # Центрирование по вертикали
-        " 73\n",
-        "2\n",
-    ]
-
-
-def modify_dxf_text(filepath, new_text):
-
-    with open(
-        filepath,
-        "r",
-        encoding="cp1251",
-        errors="ignore"
-    ) as f:
-
-        lines = f.readlines()
+        new_lines.append(lines[i])
+        i += 1
 
     # --------------------------------------------------
-    # Получаем габариты детали
-    # --------------------------------------------------
-
-    extents = find_extents(lines)
-
-    if extents is None:
-        raise Exception(
-            "Не удалось определить габариты детали"
-        )
-
-    min_x, min_y, max_x, max_y = extents
-
-    width = max_x - min_x
-    height = max_y - min_y
-
-    # --------------------------------------------------
-    # Центр детали
-    # --------------------------------------------------
-
-    center_x = (min_x + max_x) / 2.0
-    center_y = (min_y + max_y) / 2.0
-
-    # --------------------------------------------------
-    # Поворот текста
+    # Если поворота 50 не было — добавляем его перед
+    # концом MTEXT.
     #
-    # Деталь широкая  -> 0°
-    # Деталь высокая  -> 90°
+    # Но специально НЕ перестраиваем DXF.
     # --------------------------------------------------
 
-    if height > width:
-        angle = 90.0
-    else:
-        angle = 0.0
-
-    # --------------------------------------------------
-    # Ищем существующий MTEXT
-    # --------------------------------------------------
-
-    mtext = find_mtext(lines)
-
-    if mtext is None:
+    if not text_replaced:
         raise Exception(
-            "В DXF не найден MTEXT для маркировки"
+            "Не найден текст MTEXT для замены"
         )
 
-    start = mtext["start"]
-    end = mtext["end"]
-
-    layer = mtext["layer"]
-
     # --------------------------------------------------
-    # Получаем handle MTEXT
-    # --------------------------------------------------
-
-    handle = "FFFFFF"
-
-    i = start + 1
-
-    while i < end:
-
-        if lines[i].strip() == "5":
-
-            if i + 1 < end:
-                handle = lines[i + 1].strip()
-
-            break
-
-        i += 1
-
-    # --------------------------------------------------
-    # Получаем owner 330
-    # --------------------------------------------------
-
-    owner = "1F"
-
-    i = start + 1
-
-    while i < end:
-
-        if lines[i].strip() == "330":
-
-            if i + 1 < end:
-                owner = lines[i + 1].strip()
-
-            break
-
-        i += 1
-
-    # --------------------------------------------------
-    # Создаём новый TEXT
-    # --------------------------------------------------
-
-    text_entity = make_text_entity(
-        handle,
-        owner,
-        layer,
-        center_x,
-        center_y,
-        new_text,
-        angle
-    )
-
-    # --------------------------------------------------
-    # Заменяем старый MTEXT на TEXT
-    # --------------------------------------------------
-
-    new_lines = (
-        lines[:start]
-        + text_entity
-        + lines[end:]
-    )
-
-    # --------------------------------------------------
-    # Записываем DXF
+    # Сохраняем исходный DXF
     # --------------------------------------------------
 
     with open(
