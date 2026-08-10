@@ -642,6 +642,22 @@ def _parse_line_entity(entity):
 # ПОИСК ГАБАРИТОВ ПАНЕЛИ
 # ==================================================
 
+
+
+def _is_entity_start(lines, index):
+    """Возвращает True только для реального начала DXF-сущности.
+
+    Нельзя считать любой group code/value 0 началом сущности:
+    у LWPOLYLINE значение координаты Y (group code 20) вполне может быть 0.
+    """
+    if index < 0 or index + 1 >= len(lines):
+        return False
+    if lines[index].strip() != "0":
+        return False
+    value = lines[index + 1].strip()
+    return bool(value) and not value.replace('.', '', 1).replace('-', '', 1).isdigit()
+
+
 def _get_panel_bounds(lines):
 
     """
@@ -674,11 +690,7 @@ def _get_panel_bounds(lines):
 
             while j < len(lines):
 
-                if (
-                    j > i
-                    and
-                    lines[j].strip() == "0"
-                ):
+                if j > i and _is_entity_start(lines, j):
 
                     break
 
@@ -960,7 +972,7 @@ def _replace_edge_lines(lines):
 
             while j < len(lines):
 
-                if lines[j].strip() == "0":
+                if _is_entity_start(lines, j):
 
                     break
 
