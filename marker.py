@@ -11,12 +11,15 @@ ROMAN_GAP = 6.0
 
 EDGE_LAYER = "ED_Кром. в цвет"
 
-EDGE_MARK_LENGTH = 7.0
+# Отступ маркера от кромки внутрь панели
 EDGE_MARK_OFFSET = 20.0
+
+# Длина маркера
+EDGE_MARK_LENGTH = 7.0
 
 
 # ============================================================
-# ФОРМИРОВАНИЕ ТЕКСТА МАРКИРОВКИ
+# МАРКИРОВКА НОМЕРА
 # ============================================================
 
 def make_mark_text(filename, has_back):
@@ -25,7 +28,7 @@ def make_mark_text(filename, has_back):
     I_6_2.DXF без оборота -> I
 
     Арабская часть номера остается обычным MTEXT.
-    Римская часть рисуется линиями.
+    Римская часть I/V/X рисуется линиями.
     """
 
     name = os.path.splitext(filename)[0]
@@ -50,16 +53,15 @@ def make_mark_text(filename, has_back):
 def split_roman_prefix(text):
     """
     Возвращает:
-
         (римская_часть, арабская_часть)
 
     Примеры:
 
-        I      -> ("I", "")
-        IV     -> ("IV", "")
-        I4     -> ("I", "4")
-        III7   -> ("III", "7")
-        12     -> ("", "12")
+        I       -> ("I", "")
+        IV      -> ("IV", "")
+        I4      -> ("I", "4")
+        III7    -> ("III", "7")
+        12      -> ("", "12")
     """
 
     roman = []
@@ -75,19 +77,19 @@ def split_roman_prefix(text):
 def roman_is_vector(text):
     roman, arabic = split_roman_prefix(text)
 
-    return bool(roman) and all(
-        ch in "IVX"
-        for ch in roman
+    return (
+        bool(roman)
+        and all(ch in "IVX" for ch in roman)
     )
 
 
 # ============================================================
-# РИМСКИЕ ЦИФРЫ
+# РИМСКИЕ ЦИФРЫ ЛИНИЯМИ
 # ============================================================
 
 def roman_glyphs(text, height):
     """
-    Римская цифра состоит только из LINE.
+    Римские цифры строятся LINE.
 
     I = 1 линия
     V = 2 линии
@@ -95,16 +97,16 @@ def roman_glyphs(text, height):
 
     Поэтому:
 
-    I    = 1
-    II   = 2
-    III  = 3
-    IV   = 3
-    V    = 2
-    VI   = 3
-    VII  = 4
-    VIII = 5
-    IX   = 3
-    X    = 2
+        I     = 1
+        II    = 2
+        III   = 3
+        IV    = 3
+        V     = 2
+        VI    = 3
+        VII   = 4
+        VIII  = 5
+        IX    = 3
+        X     = 2
     """
 
     h = float(height)
@@ -122,12 +124,7 @@ def roman_glyphs(text, height):
         if ch == "I":
 
             segments.append(
-                (
-                    x,
-                    0.0,
-                    x,
-                    h
-                )
+                (x, 0.0, x, h)
             )
 
             x += w_i + gap
@@ -139,21 +136,11 @@ def roman_glyphs(text, height):
             bottom = x + w_v / 2.0
 
             segments.append(
-                (
-                    left,
-                    h,
-                    bottom,
-                    0.0
-                )
+                (left, h, bottom, 0.0)
             )
 
             segments.append(
-                (
-                    bottom,
-                    0.0,
-                    right,
-                    h
-                )
+                (bottom, 0.0, right, h)
             )
 
             x += w_v + gap
@@ -164,21 +151,11 @@ def roman_glyphs(text, height):
             right = x + w_v
 
             segments.append(
-                (
-                    left,
-                    0.0,
-                    right,
-                    h
-                )
+                (left, 0.0, right, h)
             )
 
             segments.append(
-                (
-                    left,
-                    h,
-                    right,
-                    0.0
-                )
+                (left, h, right, 0.0)
             )
 
             x += w_v + gap
@@ -225,7 +202,7 @@ def _find_mtext(lines):
 
 
 # ============================================================
-# DXF GROUP VALUE
+# DXF GROUP CODE
 # ============================================================
 
 def _get_group_value(entity_lines, code, default=None):
@@ -292,10 +269,7 @@ def _update_handseed(lines, handle):
 
             j = i + 1
 
-            while j < min(
-                i + 8,
-                len(lines) - 1
-            ):
+            while j < min(i + 8, len(lines) - 1):
 
                 if lines[j].strip() == "5":
 
@@ -338,7 +312,6 @@ def _make_line(
 ):
 
     return [
-
         "0\n",
         "LINE\n",
 
@@ -381,7 +354,7 @@ def _make_line(
 
 
 # ============================================================
-# АРАБСКИЙ MTEXT
+# ARABIC MTEXT
 # ============================================================
 
 def _prepare_arabic_mtext(
@@ -429,7 +402,7 @@ def _prepare_arabic_mtext(
 
 
 # ============================================================
-# РИМСКАЯ НАДПИСЬ
+# ЗАМЕНА РИМСКОГО MTEXT
 # ============================================================
 
 def _replace_roman_mtext(
@@ -501,6 +474,10 @@ def _replace_roman_mtext(
 
         return h
 
+    # --------------------------------------------------------
+    # РИМСКАЯ ЧАСТЬ
+    # --------------------------------------------------------
+
     for x1, y1, x2, y2 in segments:
 
         rx1, ry1 = _rotate_point(
@@ -526,6 +503,10 @@ def _replace_roman_mtext(
                 insert_y + ry2
             )
         )
+
+    # --------------------------------------------------------
+    # АРАБСКАЯ ЧАСТЬ
+    # --------------------------------------------------------
 
     if arabic:
 
@@ -567,105 +548,117 @@ def _replace_roman_mtext(
 
 
 # ============================================================
-# ПОИСК ЛИНИЙ КРОМКИ
+# ЧТЕНИЕ LINE
 # ============================================================
 
-def _find_edge_lines(lines):
+def _read_line_entity(entity):
 
-    edge_lines = []
+    x1 = None
+    y1 = None
+    x2 = None
+    y2 = None
+
+    layer = None
+
+    for i in range(len(entity) - 1):
+
+        code = entity[i].strip()
+        value = entity[i + 1].strip()
+
+        if code == "8":
+            layer = value
+
+        elif code == "10":
+
+            try:
+                x1 = float(value)
+            except Exception:
+                pass
+
+        elif code == "20":
+
+            try:
+                y1 = float(value)
+            except Exception:
+                pass
+
+        elif code == "11":
+
+            try:
+                x2 = float(value)
+            except Exception:
+                pass
+
+        elif code == "21":
+
+            try:
+                y2 = float(value)
+            except Exception:
+                pass
+
+    if (
+        x1 is None
+        or y1 is None
+        or x2 is None
+        or y2 is None
+    ):
+        return None
+
+    return {
+        "x1": x1,
+        "y1": y1,
+        "x2": x2,
+        "y2": y2,
+        "layer": layer
+    }
+
+
+# ============================================================
+# ПОЛУЧЕНИЕ ВСЕХ LINE
+# ============================================================
+
+def _get_line_entities(lines):
+
+    result = []
 
     i = 0
 
-    while i < len(lines):
+    while i < len(lines) - 1:
 
-        if lines[i].strip() == "0":
+        if (
+            lines[i].strip() == "0"
+            and lines[i + 1].strip() == "LINE"
+        ):
 
-            if (
-                i + 1 < len(lines)
-                and lines[i + 1].strip() == "LINE"
-            ):
+            start = i
+            i += 2
 
-                start = i
+            while i < len(lines):
 
-                end = i + 2
+                if lines[i].strip() == "0":
+                    break
 
-                while end < len(lines):
+                i += 1
 
-                    if lines[end].strip() == "0":
-                        break
+            entity = lines[start:i]
 
-                    end += 1
+            data = _read_line_entity(entity)
 
-                entity = lines[start:end]
+            if data is not None:
+                result.append(data)
 
-                layer = _get_group_value(
-                    entity,
-                    8,
-                    ""
-                )
-
-                if layer == EDGE_LAYER:
-
-                    try:
-
-                        x1 = float(
-                            _get_group_value(
-                                entity,
-                                10,
-                                0
-                            )
-                        )
-
-                        y1 = float(
-                            _get_group_value(
-                                entity,
-                                20,
-                                0
-                            )
-                        )
-
-                        x2 = float(
-                            _get_group_value(
-                                entity,
-                                11,
-                                0
-                            )
-                        )
-
-                        y2 = float(
-                            _get_group_value(
-                                entity,
-                                21,
-                                0
-                            )
-                        )
-
-                        edge_lines.append(
-                            (
-                                x1,
-                                y1,
-                                x2,
-                                y2
-                            )
-                        )
-
-                    except Exception:
-                        pass
-
-                i = end
-
-                continue
+            continue
 
         i += 1
 
-    return edge_lines
+    return result
 
 
 # ============================================================
-# ЦЕНТР ДЕТАЛИ
+# ПОЛУЧЕНИЕ ГАБАРИТА ПАНЕЛИ
 # ============================================================
 
-def _get_panel_center(lines):
+def _get_panel_bbox(lines):
 
     min_x = None
     min_y = None
@@ -673,196 +666,240 @@ def _get_panel_center(lines):
     max_y = None
 
     # --------------------------------------------------------
-    # Сначала пробуем LWPOLYLINE
+    # Сначала ищем LWPOLYLINE.
+    # Обычно именно она является контуром панели.
     # --------------------------------------------------------
 
     i = 0
 
-    while i < len(lines):
+    while i < len(lines) - 1:
 
         if (
             lines[i].strip() == "0"
-            and i + 1 < len(lines)
             and lines[i + 1].strip() == "LWPOLYLINE"
         ):
 
-            end = i + 2
+            start = i
 
-            vertices = []
+            i += 2
 
-            current_x = None
-            current_y = None
+            while i < len(lines):
 
-            while end < len(lines):
-
-                if lines[end].strip() == "0":
+                if lines[i].strip() == "0":
                     break
 
-                code = lines[end].strip()
+                i += 1
+
+            entity = lines[start:i]
+
+            xs = []
+            ys = []
+
+            j = 0
+
+            while j < len(entity) - 1:
+
+                code = entity[j].strip()
 
                 if code == "10":
 
                     try:
-                        current_x = float(
-                            lines[end + 1].strip()
+                        xs.append(
+                            float(
+                                entity[j + 1].strip()
+                            )
                         )
                     except Exception:
-                        current_x = None
+                        pass
 
                 elif code == "20":
 
                     try:
-                        current_y = float(
-                            lines[end + 1].strip()
-                        )
-                    except Exception:
-                        current_y = None
-
-                    if (
-                        current_x is not None
-                        and current_y is not None
-                    ):
-
-                        vertices.append(
-                            (
-                                current_x,
-                                current_y
+                        ys.append(
+                            float(
+                                entity[j + 1].strip()
                             )
                         )
+                    except Exception:
+                        pass
 
-                        current_x = None
-                        current_y = None
+                j += 1
 
-                end += 1
+            if xs and ys:
 
-            for x, y in vertices:
+                e_min_x = min(xs)
+                e_max_x = max(xs)
 
-                if min_x is None or x < min_x:
-                    min_x = x
+                e_min_y = min(ys)
+                e_max_y = max(ys)
 
-                if max_x is None or x > max_x:
-                    max_x = x
+                e_width = e_max_x - e_min_x
+                e_height = e_max_y - e_min_y
 
-                if min_y is None or y < min_y:
-                    min_y = y
+                # Берём самый крупный контур.
+                if (
+                    min_x is None
+                    or e_width * e_height
+                    > (max_x - min_x)
+                    * (max_y - min_y)
+                ):
 
-                if max_y is None or y > max_y:
-                    max_y = y
-
-            i = end
+                    min_x = e_min_x
+                    max_x = e_max_x
+                    min_y = e_min_y
+                    max_y = e_max_y
 
             continue
 
         i += 1
 
+    if (
+        min_x is not None
+        and min_y is not None
+        and max_x is not None
+        and max_y is not None
+    ):
+        return (
+            min_x,
+            min_y,
+            max_x,
+            max_y
+        )
+
     # --------------------------------------------------------
-    # Если полилиния не найдена — EXTMIN / EXTMAX
+    # Если LWPOLYLINE не нашли,
+    # используем EXTMIN / EXTMAX.
     # --------------------------------------------------------
+
+    ext_min_x = None
+    ext_min_y = None
+    ext_max_x = None
+    ext_max_y = None
+
+    i = 0
+
+    while i < len(lines) - 1:
+
+        if lines[i].strip() == "$EXTMIN":
+
+            j = i + 1
+
+            while j < min(i + 30, len(lines) - 1):
+
+                if lines[j].strip() == "10":
+
+                    try:
+                        ext_min_x = float(
+                            lines[j + 1].strip()
+                        )
+                    except Exception:
+                        pass
+
+                elif lines[j].strip() == "20":
+
+                    try:
+                        ext_min_y = float(
+                            lines[j + 1].strip()
+                        )
+                    except Exception:
+                        pass
+
+                j += 1
+
+        elif lines[i].strip() == "$EXTMAX":
+
+            j = i + 1
+
+            while j < min(i + 30, len(lines) - 1):
+
+                if lines[j].strip() == "10":
+
+                    try:
+                        ext_max_x = float(
+                            lines[j + 1].strip()
+                        )
+                    except Exception:
+                        pass
+
+                elif lines[j].strip() == "20":
+
+                    try:
+                        ext_max_y = float(
+                            lines[j + 1].strip()
+                        )
+                    except Exception:
+                        pass
+
+                j += 1
+
+        i += 1
 
     if (
-        min_x is None
-        or min_y is None
-        or max_x is None
-        or max_y is None
+        ext_min_x is not None
+        and ext_min_y is not None
+        and ext_max_x is not None
+        and ext_max_y is not None
     ):
 
-        for i in range(len(lines) - 1):
+        return (
+            ext_min_x,
+            ext_min_y,
+            ext_max_x,
+            ext_max_y
+        )
 
-            code = lines[i].strip()
-
-            if code == "$EXTMIN":
-
-                j = i + 1
-
-                while j < min(
-                    i + 30,
-                    len(lines) - 1
-                ):
-
-                    if lines[j].strip() == "10":
-
-                        try:
-                            min_x = float(
-                                lines[j + 1].strip()
-                            )
-                        except Exception:
-                            pass
-
-                    elif lines[j].strip() == "20":
-
-                        try:
-                            min_y = float(
-                                lines[j + 1].strip()
-                            )
-                        except Exception:
-                            pass
-
-                    j += 1
-
-            elif code == "$EXTMAX":
-
-                j = i + 1
-
-                while j < min(
-                    i + 30,
-                    len(lines) - 1
-                ):
-
-                    if lines[j].strip() == "10":
-
-                        try:
-                            max_x = float(
-                                lines[j + 1].strip()
-                            )
-                        except Exception:
-                            pass
-
-                    elif lines[j].strip() == "20":
-
-                        try:
-                            max_y = float(
-                                lines[j + 1].strip()
-                            )
-                        except Exception:
-                            pass
-
-                    j += 1
-
-    if (
-        min_x is None
-        or min_y is None
-        or max_x is None
-        or max_y is None
-    ):
-
-        return 0.0, 0.0
-
-    return (
-        (min_x + max_x) / 2.0,
-        (min_y + max_y) / 2.0
-    )
+    return None
 
 
 # ============================================================
-# ДОБАВЛЕНИЕ МАРКЕРОВ КРОМКИ
+# СОЗДАНИЕ МАРКЕРА КРОМКИ
 # ============================================================
 
-def _add_edge_markers(lines):
+def _make_edge_markers(
+    lines,
+    bbox
+):
 
-    edge_lines = _find_edge_lines(lines)
+    if bbox is None:
+        return []
 
-    if not edge_lines:
-        return lines
+    min_x, min_y, max_x, max_y = bbox
 
-    center_x, center_y = _get_panel_center(
-        lines
-    )
+    panel_width = max_x - min_x
+    panel_height = max_y - min_y
+
+    if panel_width <= 0 or panel_height <= 0:
+        return []
+
+    edge_lines = _get_line_entities(lines)
+
+    markers = []
 
     next_handle = _get_max_handle(lines) + 1
 
-    new_entities = []
+    def get_handle():
 
-    for x1, y1, x2, y2 in edge_lines:
+        nonlocal next_handle
+
+        h = f"{next_handle:X}"
+
+        next_handle += 1
+
+        return h
+
+    for edge in edge_lines:
+
+        # ----------------------------------------------------
+        # ТОЛЬКО слой кромки
+        # ----------------------------------------------------
+
+        if edge["layer"] != EDGE_LAYER:
+            continue
+
+        x1 = edge["x1"]
+        y1 = edge["y1"]
+        x2 = edge["x2"]
+        y2 = edge["y2"]
 
         dx = x2 - x1
         dy = y2 - y1
@@ -871,210 +908,203 @@ def _add_edge_markers(lines):
             dx * dx + dy * dy
         )
 
-        if length < 0.001:
+        if length < EDGE_MARK_LENGTH:
             continue
 
         # ----------------------------------------------------
-        # Единичный вектор вдоль кромки
+        # Проверяем, что линия действительно является
+        # стороной панели.
         # ----------------------------------------------------
 
-        tx = dx / length
-        ty = dy / length
+        tolerance = 1.0
 
-        # ----------------------------------------------------
-        # Два возможных нормальных направления
-        # ----------------------------------------------------
-
-        nx1 = -ty
-        ny1 = tx
-
-        nx2 = ty
-        ny2 = -tx
-
-        # ----------------------------------------------------
-        # Середина существующей линии кромки
-        # ----------------------------------------------------
-
-        mx = (x1 + x2) / 2.0
-        my = (y1 + y2) / 2.0
-
-        # ----------------------------------------------------
-        # Определяем, какая сторона направлена ВНУТРЬ панели.
-        #
-        # Смотрим, какой из двух нормальных векторов
-        # направлен к центру детали.
-        # ----------------------------------------------------
-
-        to_center_x = center_x - mx
-        to_center_y = center_y - my
-
-        dot1 = (
-            nx1 * to_center_x
-            +
-            ny1 * to_center_y
+        is_left = (
+            abs(x1 - min_x) <= tolerance
+            and abs(x2 - min_x) <= tolerance
         )
 
-        dot2 = (
-            nx2 * to_center_x
-            +
-            ny2 * to_center_y
+        is_right = (
+            abs(x1 - max_x) <= tolerance
+            and abs(x2 - max_x) <= tolerance
         )
 
-        if dot1 >= dot2:
+        is_bottom = (
+            abs(y1 - min_y) <= tolerance
+            and abs(y2 - min_y) <= tolerance
+        )
 
-            nx = nx1
-            ny = ny1
+        is_top = (
+            abs(y1 - max_y) <= tolerance
+            and abs(y2 - max_y) <= tolerance
+        )
+
+        # ----------------------------------------------------
+        # Если линия не лежит на стороне панели,
+        # не ставим маркер.
+        # ----------------------------------------------------
+
+        if not (
+            is_left
+            or is_right
+            or is_bottom
+            or is_top
+        ):
+            continue
+
+        # ----------------------------------------------------
+        # Единичный вектор вдоль кромки.
+        # ----------------------------------------------------
+
+        ux = dx / length
+        uy = dy / length
+
+        # ----------------------------------------------------
+        # Центр линии.
+        # ----------------------------------------------------
+
+        cx = (x1 + x2) / 2.0
+        cy = (y1 + y2) / 2.0
+
+        # ----------------------------------------------------
+        # Вектор внутрь панели.
+        # ----------------------------------------------------
+
+        if is_left:
+
+            nx = 1.0
+            ny = 0.0
+
+        elif is_right:
+
+            nx = -1.0
+            ny = 0.0
+
+        elif is_bottom:
+
+            nx = 0.0
+            ny = 1.0
 
         else:
 
-            nx = nx2
-            ny = ny2
+            nx = 0.0
+            ny = -1.0
 
         # ----------------------------------------------------
-        # Точка маркера:
-        #
-        # 20 мм ВНУТРЬ от линии кромки.
+        # Центр будущего маркера:
+        # 20 мм внутрь панели.
         # ----------------------------------------------------
 
-        marker_center_x = (
-            mx
-            +
-            nx * EDGE_MARK_OFFSET
+        mcx = (
+            cx
+            + nx * EDGE_MARK_OFFSET
         )
 
-        marker_center_y = (
-            my
-            +
-            ny * EDGE_MARK_OFFSET
+        mcy = (
+            cy
+            + ny * EDGE_MARK_OFFSET
         )
 
         # ----------------------------------------------------
-        # Половина длины маркера
+        # Половина длины маркера.
         # ----------------------------------------------------
 
         half = EDGE_MARK_LENGTH / 2.0
 
-        marker_x1 = (
-            marker_center_x
-            -
-            tx * half
+        mx1 = (
+            mcx
+            - ux * half
         )
 
-        marker_y1 = (
-            marker_center_y
-            -
-            ty * half
+        my1 = (
+            mcy
+            - uy * half
         )
 
-        marker_x2 = (
-            marker_center_x
-            +
-            tx * half
+        mx2 = (
+            mcx
+            + ux * half
         )
 
-        marker_y2 = (
-            marker_center_y
-            +
-            ty * half
+        my2 = (
+            mcy
+            + uy * half
         )
 
         # ----------------------------------------------------
         # Создаём новый LINE.
         #
         # ВАЖНО:
-        # исходная линия кромки НЕ ТРОГАЕТСЯ.
+        # исходная линия здесь вообще не изменяется.
         # ----------------------------------------------------
 
-        new_entities.extend(
+        markers.extend(
             _make_line(
-                f"{next_handle:X}",
+                get_handle(),
                 "1F",
                 EDGE_LAYER,
-                marker_x1,
-                marker_y1,
-                marker_x2,
-                marker_y2
+                mx1,
+                my1,
+                mx2,
+                my2
             )
         )
 
-        next_handle += 1
+    return markers
 
-    if not new_entities:
+
+# ============================================================
+# ДОБАВЛЕНИЕ МАРКЕРОВ ПЕРЕД ENDSEC
+# ============================================================
+
+def _insert_edge_markers(
+    lines,
+    markers
+):
+
+    if not markers:
         return lines
 
     # --------------------------------------------------------
-    # Вставляем новые LINE перед ENDSEC в ENTITIES.
+    # Ищем ENDSEC именно секции ENTITIES.
     # --------------------------------------------------------
 
-    insert_index = None
-
-    in_entities = False
+    entities_start = None
+    entities_end = None
 
     i = 0
 
     while i < len(lines) - 1:
 
         if (
-            lines[i].strip() == "0"
-            and lines[i + 1].strip() == "SECTION"
+            lines[i].strip() == "2"
+            and lines[i + 1].strip() == "ENTITIES"
         ):
 
-            # Проверяем следующий 2-код
+            entities_start = i + 2
 
-            j = i + 2
+            j = entities_start
 
-            if (
-                j < len(lines)
-                and lines[j].strip() == "2"
-            ):
+            while j < len(lines):
 
-                if (
-                    j + 1 < len(lines)
-                    and lines[j + 1].strip() == "ENTITIES"
-                ):
+                if lines[j].strip() == "ENDSEC":
 
-                    in_entities = True
+                    entities_end = j
+                    break
 
-                    i = j + 2
+                j += 1
 
-                    continue
-
-        if in_entities:
-
-            if (
-                lines[i].strip() == "0"
-                and i + 1 < len(lines)
-                and lines[i + 1].strip() == "ENDSEC"
-            ):
-
-                insert_index = i
-
-                break
+            break
 
         i += 1
 
-    if insert_index is None:
-
+    if entities_end is None:
         return lines
 
-    lines = (
-        lines[:insert_index]
-        +
-        new_entities
-        +
-        lines[insert_index:]
+    return (
+        lines[:entities_end]
+        + markers
+        + lines[entities_end:]
     )
-
-    # --------------------------------------------------------
-    # Обновляем HANDSEED
-    # --------------------------------------------------------
-
-    _update_handseed(
-        lines,
-        f"{next_handle:X}"
-    )
-
-    return lines
 
 
 # ============================================================
@@ -1093,103 +1123,16 @@ def modify_dxf_text(filepath, new_text):
         lines = f.readlines()
 
     # ========================================================
-    # Определяем габариты детали
+    # 1. Габариты панели
     # ========================================================
 
-    min_x = None
-    min_y = None
-    max_x = None
-    max_y = None
-
-    for i in range(len(lines) - 1):
-
-        code = lines[i].strip()
-
-        if code == "$EXTMIN":
-
-            j = i + 1
-
-            while j < min(
-                i + 30,
-                len(lines) - 1
-            ):
-
-                if lines[j].strip() == "10":
-
-                    try:
-                        min_x = float(
-                            lines[j + 1].strip()
-                        )
-                    except Exception:
-                        pass
-
-                elif lines[j].strip() == "20":
-
-                    try:
-                        min_y = float(
-                            lines[j + 1].strip()
-                        )
-                    except Exception:
-                        pass
-
-                j += 1
-
-        elif code == "$EXTMAX":
-
-            j = i + 1
-
-            while j < min(
-                i + 30,
-                len(lines) - 1
-            ):
-
-                if lines[j].strip() == "10":
-
-                    try:
-                        max_x = float(
-                            lines[j + 1].strip()
-                        )
-                    except Exception:
-                        pass
-
-                elif lines[j].strip() == "20":
-
-                    try:
-                        max_y = float(
-                            lines[j + 1].strip()
-                        )
-                    except Exception:
-                        pass
-
-                j += 1
+    bbox = _get_panel_bbox(lines)
 
     # ========================================================
-    # Определяем поворот текста
+    # 2. Римская / арабская маркировка
     # ========================================================
 
-    angle = 0.0
-
-    if (
-        min_x is not None
-        and min_y is not None
-        and max_x is not None
-        and max_y is not None
-    ):
-
-        width = max_x - min_x
-        height = max_y - min_y
-
-        if height > width:
-
-            angle = 90.0
-
-    # ========================================================
-    # Ищем MTEXT
-    # ========================================================
-
-    start, end, entity_lines = _find_mtext(
-        lines
-    )
+    start, end, entity_lines = _find_mtext(lines)
 
     if entity_lines is None:
 
@@ -1197,9 +1140,9 @@ def modify_dxf_text(filepath, new_text):
             "Не найден MTEXT для замены"
         )
 
-    # ========================================================
-    # РИМСКАЯ ЧАСТЬ
-    # ========================================================
+    # --------------------------------------------------------
+    # Римская часть
+    # --------------------------------------------------------
 
     if roman_is_vector(new_text):
 
@@ -1209,7 +1152,7 @@ def modify_dxf_text(filepath, new_text):
             end,
             entity_lines,
             new_text,
-            angle
+            0.0
         )
 
         if replacement is None:
@@ -1220,15 +1163,13 @@ def modify_dxf_text(filepath, new_text):
 
         lines = (
             lines[:start]
-            +
-            replacement
-            +
-            lines[end:]
+            + replacement
+            + lines[end:]
         )
 
-    # ========================================================
-    # АРАБСКАЯ ЧАСТЬ
-    # ========================================================
+    # --------------------------------------------------------
+    # Арабская часть
+    # --------------------------------------------------------
 
     else:
 
@@ -1236,6 +1177,8 @@ def modify_dxf_text(filepath, new_text):
 
         result = []
 
+        # После замены римского MTEXT
+        # обработка арабского также сохраняется.
         for i, line in enumerate(lines):
 
             s = line.strip()
@@ -1272,13 +1215,11 @@ def modify_dxf_text(filepath, new_text):
                         lines[i + 1]
                     )
 
-                result.append(
-                    "50\n"
-                )
+                result.append("50\n")
 
-                result.append(
-                    f"{angle:g}\n"
-                )
+                result.append("0\n")
+
+                inside = False
 
                 continue
 
@@ -1299,20 +1240,40 @@ def modify_dxf_text(filepath, new_text):
         lines = result
 
     # ========================================================
-    # НОВОЕ:
+    # 3. МАРКЕРЫ КРОМКИ
+    # ========================================================
     #
-    # ДОБАВЛЯЕМ МАРКЕРЫ КРОМКИ
+    # ВАЖНО:
     #
     # Исходные линии слоя ED_Кром. в цвет
     # НЕ УДАЛЯЮТСЯ.
-    # ========================================================
+    #
+    # Мы только добавляем новые LINE.
+    #
 
-    lines = _add_edge_markers(
-        lines
+    markers = _make_edge_markers(
+        lines,
+        bbox
+    )
+
+    lines = _insert_edge_markers(
+        lines,
+        markers
     )
 
     # ========================================================
-    # Сохраняем DXF
+    # 4. HANDSEED
+    # ========================================================
+
+    max_handle = _get_max_handle(lines)
+
+    _update_handseed(
+        lines,
+        f"{max_handle + 1:X}"
+    )
+
+    # ========================================================
+    # 5. Записываем DXF
     # ========================================================
 
     with open(
